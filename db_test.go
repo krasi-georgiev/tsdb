@@ -1470,7 +1470,7 @@ func TestBlockRanges(t *testing.T) {
 	// Test that the compactor doesn't create overlapping blocks
 	// when a non standard block already exists.
 	firstBlockMaxT := int64(3)
-	createPopulatedBlock(t, dir, 1, 0, firstBlockMaxT)
+	createPopulatedBlock(t, dir, 1, 1, 0, firstBlockMaxT)
 	db, err := Open(dir, logger, nil, DefaultOptions)
 	if err != nil {
 		t.Fatalf("Opening test storage failed: %s", err)
@@ -1519,7 +1519,7 @@ func TestBlockRanges(t *testing.T) {
 	testutil.Ok(t, db.Close())
 
 	thirdBlockMaxt := secondBlockMaxt + 2
-	createPopulatedBlock(t, dir, 1, secondBlockMaxt+1, thirdBlockMaxt)
+	createPopulatedBlock(t, dir, 1, 1, secondBlockMaxt+1, thirdBlockMaxt)
 
 	db, err = Open(dir, logger, nil, DefaultOptions)
 	if err != nil {

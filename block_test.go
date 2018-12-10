@@ -22,8 +22,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/tsdb/index"
-	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
+	"github.com/prometheus/tsdb/tsdbutil"
 )
 
 // In Prometheus 2.1.0 we had a bug where the meta.json version was falsely bumped
@@ -77,16 +77,15 @@ func createEmptyBlock(t *testing.T, dir string, meta *BlockMeta) *Block {
 	return b
 }
 
-// createPopulatedBlock creates a block with nSeries series, filled with
+// createPopulatedBlock creates a block with series of nLabels with nVals, filled with
 // samples of the given mint,maxt time range.
-func createPopulatedBlock(tb testing.TB, dir string, nSeries int, mint, maxt int64) *Block {
+func createPopulatedBlock(tb testing.TB, dir string, nLabels, nVals int, mint, maxt int64) *Block {
 	head, err := NewHead(nil, nil, nil, 2*60*60*1000)
 	testutil.Ok(tb, err)
 	defer head.Close()
 
-	lbls, err := labels.ReadLabels(filepath.Join("testdata", "20kseries.json"), nSeries)
-	testutil.Ok(tb, err)
-	refs := make([]uint64, nSeries)
+	lbls := tsdbutil.GenSeries(nLabels, nVals)
+	refs := make([]uint64, len(lbls))
 
 	for ts := mint; ts <= maxt; ts++ {
 		app := head.Appender()
@@ -116,4 +115,22 @@ func createPopulatedBlock(tb testing.TB, dir string, nSeries int, mint, maxt int
 	blk, err := OpenBlock(filepath.Join(dir, ulid.String()), nil)
 	testutil.Ok(tb, err)
 	return blk
+}
+
+func createHeadBlock(nLabels, nVals int) (*Head, error) {
+	series := tsdbutil.GenSeries(nLabels, nVals)
+	hb, err := NewHead(nil, nil, nil, 10*60*60*1000)
+	if err != nil {
+		return nil, err
+	}
+	app := hb.Appender()
+	for _, l := range series {
+		if _, err := app.Add(l, 1, 0); err != nil {
+			return nil, err
+		}
+	}
+	if err := app.Commit(); err != nil {
+		return nil, err
+	}
+	return hb, nil
 }
