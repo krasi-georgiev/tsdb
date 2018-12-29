@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/tsdb/chunks"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
+	"github.com/prometheus/tsdb/tsdbutil"
 )
 
 type series struct {
@@ -237,9 +238,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	testutil.Ok(t, err)
 	defer os.RemoveAll(dir)
 
-	lbls, err := labels.ReadLabels(filepath.Join("..", "testdata", "20kseries.json"), 20000)
-	testutil.Ok(t, err)
-
+	lbls := tsdbutil.GenSeries(20000, 10, true, false)
 	// Sort labels as the index writer expects series in sorted order.
 	sort.Sort(labels.Slice(lbls))
 

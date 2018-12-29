@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
+	"github.com/prometheus/tsdb/tsdbutil"
 )
 
 // In Prometheus 2.1.0 we had a bug where the meta.json version was falsely bumped
@@ -45,7 +45,7 @@ func TestSetCompactionFailed(t *testing.T) {
 	testutil.Ok(t, err)
 	defer os.RemoveAll(tmpdir)
 
-	blockDir := createBlock(t, tmpdir, 0, 0, 0)
+	blockDir := createBlock(t, tmpdir, 0, 0, false, false, 0, 0)
 	b, err := OpenBlock(blockDir, nil)
 	testutil.Ok(t, err)
 	testutil.Equals(t, false, b.meta.Compaction.Failed)
@@ -61,28 +61,25 @@ func TestSetCompactionFailed(t *testing.T) {
 
 // createBlock creates a block with nSeries series, filled with
 // samples of the given mint,maxt time range and returns its dir.
-func createBlock(tb testing.TB, dir string, nSeries int, mint, maxt int64) string {
+func createBlock(tb testing.TB, dir string, totalSeries, totalLabels int, cardinality, churn bool, mint, maxt int64) string {
 	head, err := NewHead(nil, nil, nil, 2*60*60*1000)
 	testutil.Ok(tb, err)
 	defer head.Close()
 
-	lbls, err := labels.ReadLabels(filepath.Join("testdata", "20kseries.json"), nSeries)
-	testutil.Ok(tb, err)
-	var ref uint64
-
-	for ts := mint; ts <= maxt; ts++ {
-		app := head.Appender()
-		for _, lbl := range lbls {
-			err := app.AddFast(ref, ts, rand.Float64())
-			if err == nil {
+	lbls := tsdbutil.GenSeries(totalSeries, totalLabels, cardinality, churn)
+	app := head.Appender()
+	for _, lbl := range lbls {
+		var ref uint64
+		for ts := mint; ts <= maxt; ts++ {
+			if err := app.AddFast(ref, ts, rand.Float64()); err == nil {
 				continue
 			}
 			ref, err = app.Add(lbl, int64(ts), rand.Float64())
 			testutil.Ok(tb, err)
 		}
-		err := app.Commit()
-		testutil.Ok(tb, err)
 	}
+	err = app.Commit()
+	testutil.Ok(tb, err)
 
 	compactor, err := NewLeveledCompactor(nil, log.NewNopLogger(), []int64{1000000}, nil)
 	testutil.Ok(tb, err)
