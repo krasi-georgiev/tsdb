@@ -21,7 +21,7 @@ import (
 )
 
 // GenSeries generates series with a given number of labels and values.
-func GenSeries(totalSeries int, labelCount int, cardinality, churn bool) []labels.Labels {
+func GenSeries(totalSeries, labelCount int, cardinality, churn bool) []labels.Labels {
 	series := make([]labels.Labels, totalSeries)
 	if totalSeries == 0 || labelCount == 0 {
 		return nil
