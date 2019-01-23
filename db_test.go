@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/tsdb/index"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
+	"github.com/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/tsdb/wal"
 )
 
@@ -87,7 +88,7 @@ func TestDB_reloadOrder(t *testing.T) {
 		{MinTime: 100, MaxTime: 110},
 	}
 	for _, m := range metas {
-		createBlock(t, db.Dir(), 1, 1, false, false, m.MinTime, m.MaxTime)
+		createBlock(t, db.Dir(), tsdbutil.GenSeries(1, 1, m.MinTime, m.MaxTime))
 	}
 
 	testutil.Ok(t, db.reload())
@@ -253,7 +254,7 @@ Outer:
 		}
 
 		expss := newMockSeriesSet([]Series{
-			newSeries(map[string]string{"a": "b"}, expSamples),
+			tsdbutil.NewSeries(map[string]string{"a": "b"}, expSamples),
 		})
 
 		if len(expSamples) == 0 {
@@ -480,7 +481,7 @@ Outer:
 		}
 
 		expss := newMockSeriesSet([]Series{
-			newSeries(map[string]string{"a": "b"}, expSamples),
+			tsdbutil.NewSeries(map[string]string{"a": "b"}, expSamples),
 		})
 
 		if len(expSamples) == 0 {
@@ -785,7 +786,7 @@ func TestTombstoneClean(t *testing.T) {
 		}
 
 		expss := newMockSeriesSet([]Series{
-			newSeries(map[string]string{"a": "b"}, expSamples),
+			tsdbutil.NewSeries(map[string]string{"a": "b"}, expSamples),
 		})
 
 		if len(expSamples) == 0 {
@@ -833,7 +834,7 @@ func TestTombstoneCleanFail(t *testing.T) {
 	// totalBlocks should be >=2 so we have enough blocks to trigger compaction failure.
 	totalBlocks := 2
 	for i := 0; i < totalBlocks; i++ {
-		blockDir := createBlock(t, db.Dir(), 0, 0, false, false, 0, 0)
+		blockDir := createBlock(t, db.Dir(), nil)
 		block, err := OpenBlock(blockDir, nil)
 		testutil.Ok(t, err)
 		// Add some some fake tombstones to trigger the compaction.
@@ -877,7 +878,7 @@ func (c *mockCompactorFailing) Write(dest string, b BlockReader, mint, maxt int6
 		return ulid.ULID{}, fmt.Errorf("the compactor already did the maximum allowed blocks so it is time to fail")
 	}
 
-	block, err := OpenBlock(createBlock(c.t, dest, 0, 0, false, false, 0, 0), nil)
+	block, err := OpenBlock(createBlock(c.t, dest, nil), nil)
 	testutil.Ok(c.t, err)
 	testutil.Ok(c.t, block.Close()) // Close block as we won't be using anywhere.
 	c.blocks = append(c.blocks, block)
@@ -1277,7 +1278,7 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 		testutil.Ok(t, err)
 		defer os.RemoveAll(dir)
 
-		createBlock(t, dir, 1, 1, false, false, 1000, 2000)
+		createBlock(t, dir, tsdbutil.GenSeries(1, 1, 1000, 2000))
 
 		db, err := Open(dir, nil, nil, nil)
 		testutil.Ok(t, err)
@@ -1290,7 +1291,7 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 		testutil.Ok(t, err)
 		defer os.RemoveAll(dir)
 
-		createBlock(t, dir, 1, 1, false, false, 1000, 6000)
+		createBlock(t, dir, tsdbutil.GenSeries(1, 1, 1000, 6000))
 
 		testutil.Ok(t, os.MkdirAll(path.Join(dir, "wal"), 0777))
 		w, err := wal.New(nil, nil, path.Join(dir, "wal"))
@@ -1477,7 +1478,7 @@ func TestBlockRanges(t *testing.T) {
 	// Test that the compactor doesn't create overlapping blocks
 	// when a non standard block already exists.
 	firstBlockMaxT := int64(3)
-	createBlock(t, dir, 1, 1, false, false, 0, firstBlockMaxT)
+	createBlock(t, dir, tsdbutil.GenSeries(1, 1, 0, firstBlockMaxT))
 	db, err := Open(dir, logger, nil, DefaultOptions)
 	if err != nil {
 		t.Fatalf("Opening test storage failed: %s", err)
@@ -1526,7 +1527,7 @@ func TestBlockRanges(t *testing.T) {
 	testutil.Ok(t, db.Close())
 
 	thirdBlockMaxt := secondBlockMaxt + 2
-	createBlock(t, dir, 1, 1, false, false, secondBlockMaxt+1, thirdBlockMaxt)
+	createBlock(t, dir, tsdbutil.GenSeries(1, 1, secondBlockMaxt+1, thirdBlockMaxt))
 
 	db, err = Open(dir, logger, nil, DefaultOptions)
 	if err != nil {

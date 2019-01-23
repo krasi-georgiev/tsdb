@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/tsdb/index"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
+	"github.com/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/tsdb/wal"
 )
 
@@ -358,7 +359,7 @@ Outer:
 		}
 
 		expss := newMockSeriesSet([]Series{
-			newSeries(map[string]string{"a": "b"}, expSamples),
+			tsdbutil.NewSeries(map[string]string{"a": "b"}, expSamples),
 		})
 
 		if len(expSamples) == 0 {
@@ -551,7 +552,7 @@ func TestDelete_e2e(t *testing.T) {
 				// doesn't skip series with no samples.
 				// TODO: But sometimes SeriesSet returns an empty SeriesIterator
 				if len(smpls) > 0 {
-					matchedSeries = append(matchedSeries, newSeries(
+					matchedSeries = append(matchedSeries, tsdbutil.NewSeries(
 						m.Map(),
 						smpls,
 					))

@@ -15,49 +15,82 @@ package tsdbutil
 
 import (
 	"math/rand"
-	"time"
+	"sort"
 
+	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
 )
 
 // GenSeries generates series with a given number of labels and values.
-func GenSeries(totalSeries, labelCount int, cardinality, churn bool) []labels.Labels {
-	series := make([]labels.Labels, totalSeries)
+func GenSeries(totalSeries, labelCount int, mint, maxt int64) []tsdb.Series {
 	if totalSeries == 0 || labelCount == 0 {
 		return nil
 	}
+	series := make([]tsdb.Series, totalSeries)
 
-	labelNames := make([]string, labelCount)
-	labelValues := make([]string, labelCount)
-
-	// Generate all label names and values.
-	for v := 0; v < labelCount; v++ {
-		labelNames[v] = RandString()
-		if !cardinality {
-			labelValues[v] = RandString()
+	for i := 0; i < totalSeries; i++ {
+		lbls := make(map[string]string, labelCount)
+		for len(lbls) < labelCount {
+			lbls[RandString()] = RandString()
 		}
+		samples := make([]Sample, 0, maxt-mint+1)
+		for t := mint; t <= maxt; t++ {
+			samples = append(samples, sample{t: t, v: rand.Float64()})
+		}
+		series[i] = NewSeries(lbls, samples)
 	}
 
-	for s := 0; s < totalSeries; s++ {
-		lbs := labels.Labels{}
-		lbsC := labelCount
-		if churn {
-			rand.Seed(time.Now().UnixNano())
-			lbsC = rand.Intn(labelCount) + 1 // We don't want 0.
-		}
-		for i := 0; i < lbsC; i++ {
-			l := labels.Label{
-				Name:  labelNames[i],
-				Value: labelValues[i],
-			}
-			if l.Value == "" {
-				l.Value = RandString()
-			}
-			lbs = append(lbs, l)
-		}
-		series[s] = lbs
-	}
 	return series
+}
+
+type mockSeries struct {
+	labels   func() labels.Labels
+	iterator func() tsdb.SeriesIterator
+}
+
+func NewSeries(l map[string]string, s []Sample) tsdb.Series {
+	return &mockSeries{
+		labels:   func() labels.Labels { return labels.FromMap(l) },
+		iterator: func() tsdb.SeriesIterator { return newListSeriesIterator(s) },
+	}
+}
+func (m *mockSeries) Labels() labels.Labels         { return m.labels() }
+func (m *mockSeries) Iterator() tsdb.SeriesIterator { return m.iterator() }
+
+type listSeriesIterator struct {
+	list []Sample
+	idx  int
+}
+
+func newListSeriesIterator(list []Sample) *listSeriesIterator {
+	return &listSeriesIterator{list: list, idx: -1}
+}
+
+func (it *listSeriesIterator) At() (int64, float64) {
+	s := it.list[it.idx]
+	return s.T(), s.V()
+}
+
+func (it *listSeriesIterator) Next() bool {
+	it.idx++
+	return it.idx < len(it.list)
+}
+
+func (it *listSeriesIterator) Seek(t int64) bool {
+	if it.idx == -1 {
+		it.idx = 0
+	}
+	// Do binary search between current position and end.
+	it.idx = sort.Search(len(it.list)-it.idx, func(i int) bool {
+		s := it.list[i+it.idx]
+		return s.T() >= t
+	})
+
+	return it.idx < len(it.list)
+}
+
+func (it *listSeriesIterator) Err() error {
+	return nil
 }
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
