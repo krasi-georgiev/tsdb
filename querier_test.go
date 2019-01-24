@@ -68,58 +68,6 @@ func (m *mockSeriesIterator) At() (int64, float64) { return m.at() }
 func (m *mockSeriesIterator) Next() bool           { return m.next() }
 func (m *mockSeriesIterator) Err() error           { return m.err() }
 
-type mockSeries struct {
-	labels   func() labels.Labels
-	iterator func() SeriesIterator
-}
-
-type Sample = tsdbutil.Sample
-
-func newSeries(l map[string]string, s []Sample) Series {
-	return &mockSeries{
-		labels:   func() labels.Labels { return labels.FromMap(l) },
-		iterator: func() SeriesIterator { return newListSeriesIterator(s) },
-	}
-}
-func (m *mockSeries) Labels() labels.Labels    { return m.labels() }
-func (m *mockSeries) Iterator() SeriesIterator { return m.iterator() }
-
-type listSeriesIterator struct {
-	list []Sample
-	idx  int
-}
-
-func newListSeriesIterator(list []Sample) *listSeriesIterator {
-	return &listSeriesIterator{list: list, idx: -1}
-}
-
-func (it *listSeriesIterator) At() (int64, float64) {
-	s := it.list[it.idx]
-	return s.T(), s.V()
-}
-
-func (it *listSeriesIterator) Next() bool {
-	it.idx++
-	return it.idx < len(it.list)
-}
-
-func (it *listSeriesIterator) Seek(t int64) bool {
-	if it.idx == -1 {
-		it.idx = 0
-	}
-	// Do binary search between current position and end.
-	it.idx = sort.Search(len(it.list)-it.idx, func(i int) bool {
-		s := it.list[i+it.idx]
-		return s.T() >= t
-	})
-
-	return it.idx < len(it.list)
-}
-
-func (it *listSeriesIterator) Err() error {
-	return nil
-}
-
 func TestMergedSeriesSet(t *testing.T) {
 
 	cases := []struct {
@@ -132,32 +80,32 @@ func TestMergedSeriesSet(t *testing.T) {
 	}{
 		{
 			a: newMockSeriesSet([]Series{
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"a": "a",
 				}, []Sample{
 					sample{t: 1, v: 1},
 				}),
 			}),
 			b: newMockSeriesSet([]Series{
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"a": "a",
 				}, []Sample{
 					sample{t: 2, v: 2},
 				}),
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"b": "b",
 				}, []Sample{
 					sample{t: 1, v: 1},
 				}),
 			}),
 			exp: newMockSeriesSet([]Series{
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"a": "a",
 				}, []Sample{
 					sample{t: 1, v: 1},
 					sample{t: 2, v: 2},
 				}),
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"b": "b",
 				}, []Sample{
 					sample{t: 1, v: 1},
@@ -166,13 +114,13 @@ func TestMergedSeriesSet(t *testing.T) {
 		},
 		{
 			a: newMockSeriesSet([]Series{
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "127.0.0.1:9090",
 				}, []Sample{
 					sample{t: 1, v: 1},
 				}),
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "localhost:9090",
 				}, []Sample{
@@ -180,13 +128,13 @@ func TestMergedSeriesSet(t *testing.T) {
 				}),
 			}),
 			b: newMockSeriesSet([]Series{
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "127.0.0.1:9090",
 				}, []Sample{
 					sample{t: 2, v: 1},
 				}),
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "query",
 					"instance": "localhost:9090",
 				}, []Sample{
@@ -194,20 +142,20 @@ func TestMergedSeriesSet(t *testing.T) {
 				}),
 			}),
 			exp: newMockSeriesSet([]Series{
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "127.0.0.1:9090",
 				}, []Sample{
 					sample{t: 1, v: 1},
 					sample{t: 2, v: 1},
 				}),
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "localhost:9090",
 				}, []Sample{
 					sample{t: 1, v: 2},
 				}),
-				newSeries(map[string]string{
+				tsdbutil.NewSeries(map[string]string{
 					"handler":  "query",
 					"instance": "localhost:9090",
 				}, []Sample{
@@ -1232,7 +1180,7 @@ func BenchmarkPersistedQueries(b *testing.B) {
 				dir, err := ioutil.TempDir("", "bench_persisted")
 				testutil.Ok(b, err)
 				defer os.RemoveAll(dir)
-				block, err := OpenBlock(createBlock(b, dir, nSeries, 10, false, false, 1, int64(nSamples)), nil)
+				block, err := OpenBlock(createBlock(b, dir, tsdbutil.GenSeries(nSeries, 10, 1, int64(nSamples))), nil)
 				testutil.Ok(b, err)
 				defer block.Close()
 

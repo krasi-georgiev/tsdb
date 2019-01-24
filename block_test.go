@@ -45,7 +45,7 @@ func TestSetCompactionFailed(t *testing.T) {
 	testutil.Ok(t, err)
 	defer os.RemoveAll(tmpdir)
 
-	blockDir := createBlock(t, tmpdir, 0, 0, false, false, 0, 0)
+	blockDir := createBlock(t, tmpdir, nil)
 	b, err := OpenBlock(blockDir, nil)
 	testutil.Ok(t, err)
 	testutil.Equals(t, false, b.meta.Compaction.Failed)
@@ -59,24 +59,28 @@ func TestSetCompactionFailed(t *testing.T) {
 	testutil.Ok(t, b.Close())
 }
 
-// createBlock creates a block with nSeries series, filled with
-// samples of the given mint,maxt time range and returns its dir.
-func createBlock(tb testing.TB, dir string, totalSeries, totalLabels int, cardinality, churn bool, mint, maxt int64) string {
+// createBlock creates a block with given set of series and returns its dir.
+func createBlock(tb testing.TB, dir string, series []Series) string {
 	head, err := NewHead(nil, nil, nil, 2*60*60*1000)
 	testutil.Ok(tb, err)
 	defer head.Close()
 
-	lbls := tsdbutil.GenSeries(totalSeries, totalLabels, cardinality, churn)
 	app := head.Appender()
-	for _, lbl := range lbls {
-		var ref uint64
-		for ts := mint; ts <= maxt; ts++ {
-			if err := app.AddFast(ref, ts, rand.Float64()); err == nil {
-				continue
+	for _, s := range series {
+		ref := uint64(0)
+		it := s.Iterator()
+		for it.Next() {
+			t, v := it.At()
+			if ref != 0 {
+				err := app.AddFast(ref, t, v)
+				if err == nil {
+					continue
+				}
 			}
-			ref, err = app.Add(lbl, int64(ts), rand.Float64())
+			ref, err = app.Add(s.Labels(), t, v)
 			testutil.Ok(tb, err)
 		}
+		testutil.Ok(tb, it.Err())
 	}
 	err = app.Commit()
 	testutil.Ok(tb, err)
