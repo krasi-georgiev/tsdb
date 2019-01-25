@@ -45,8 +45,8 @@ func TestSetCompactionFailed(t *testing.T) {
 	testutil.Ok(t, err)
 	defer os.RemoveAll(tmpdir)
 
-	blockDir := createBlock(t, tmpdir, nil)
-	b, err := OpenBlock(blockDir, nil)
+	blockDir := createBlock(t, tmpdir, genSeries(1, 1, 0, 0))
+	b, err := OpenBlock(nil, blockDir, nil)
 	testutil.Ok(t, err)
 	testutil.Equals(t, false, b.meta.Compaction.Failed)
 	testutil.Ok(t, b.setCompactionFailed())
@@ -93,4 +93,54 @@ func createBlock(tb testing.TB, dir string, series []Series) string {
 	ulid, err := compactor.Write(dir, head, head.MinTime(), head.MaxTime(), nil)
 	testutil.Ok(tb, err)
 	return filepath.Join(dir, ulid.String())
+}
+
+// genSeries generates series with a given number of labels and values.
+func genSeries(totalSeries, labelCount int, mint, maxt int64) []Series {
+	if totalSeries == 0 || labelCount == 0 {
+		return nil
+	}
+	series := make([]Series, totalSeries)
+
+	for i := 0; i < totalSeries; i++ {
+		lbls := make(map[string]string, labelCount)
+		for len(lbls) < labelCount {
+			lbls[randString()] = randString()
+		}
+		samples := make([]tsdbutil.Sample, 0, maxt-mint+1)
+		for t := mint; t <= maxt; t++ {
+			samples = append(samples, sample{t: t, v: rand.Float64()})
+		}
+		series[i] = newSeries(lbls, samples)
+	}
+
+	return series
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
+)
+
+// randString generates random string.
+func randString() string {
+	maxLength := int32(50)
+	length := rand.Int31n(maxLength)
+	b := make([]byte, length+1)
+	// A rand.Int63() generates 63 random bits, enough for letterIdxMax characters!
+	for i, cache, remain := length, rand.Int63(), letterIdxMax; i >= 0; {
+		if remain == 0 {
+			cache, remain = rand.Int63(), letterIdxMax
+		}
+		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
+			b[i] = letterBytes[idx]
+			i--
+		}
+		cache >>= letterIdxBits
+		remain--
+	}
+
+	return string(b)
 }

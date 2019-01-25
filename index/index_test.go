@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/tsdb/chunks"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
-	"github.com/prometheus/tsdb/tsdbutil"
 )
 
 type series struct {
@@ -238,7 +237,16 @@ func TestPersistence_index_e2e(t *testing.T) {
 	testutil.Ok(t, err)
 	defer os.RemoveAll(dir)
 
-	lbls := tsdbutil.GenSeries(20000, 10, true, false)
+	nSeries := 20000
+	nLabels := 10
+	lbls := make([]labels.Labels, 0, nSeries)
+	for i := 0; i < nSeries; i++ {
+		l := make(map[string]string, nLabels)
+		for len(l) < nLabels {
+			l[randString()] = randString()
+		}
+		lbls = append(lbls, labels.FromMap(l))
+	}
 	// Sort labels as the index writer expects series in sorted order.
 	sort.Sort(labels.Slice(lbls))
 
@@ -389,6 +397,33 @@ func TestPersistence_index_e2e(t *testing.T) {
 	}
 
 	testutil.Ok(t, ir.Close())
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
+)
+
+func randString() string {
+	maxLength := int32(50)
+	length := rand.Int31n(maxLength)
+	b := make([]byte, length+1)
+	// A rand.Int63() generates 63 random bits, enough for letterIdxMax characters!
+	for i, cache, remain := length, rand.Int63(), letterIdxMax; i >= 0; {
+		if remain == 0 {
+			cache, remain = rand.Int63(), letterIdxMax
+		}
+		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
+			b[i] = letterBytes[idx]
+			i--
+		}
+		cache >>= letterIdxBits
+		remain--
+	}
+
+	return string(b)
 }
 
 func TestDecbufUvariantWithInvalidBuffer(t *testing.T) {
