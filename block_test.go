@@ -18,10 +18,10 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/testutil"
 	"github.com/prometheus/tsdb/tsdbutil"
 )
@@ -46,45 +46,23 @@ func TestSetCompactionFailed(t *testing.T) {
 	testutil.Ok(t, err)
 	defer os.RemoveAll(tmpdir)
 
-	blockDir := createBlock(t, tmpdir, 0, 0, 0)
-	b, err := OpenBlock(blockDir, nil)
+	blockDir := createBlock(t, tmpdir, genSeries(1, 1, 0, 0, true))
+	b, err := OpenBlock(nil, blockDir, nil)
 	testutil.Ok(t, err)
 	testutil.Equals(t, false, b.meta.Compaction.Failed)
 	testutil.Ok(t, b.setCompactionFailed())
 	testutil.Equals(t, true, b.meta.Compaction.Failed)
 	testutil.Ok(t, b.Close())
 
-	b, err = OpenBlock(blockDir, nil)
+	b, err = OpenBlock(nil, blockDir, nil)
 	testutil.Ok(t, err)
 	testutil.Equals(t, true, b.meta.Compaction.Failed)
 	testutil.Ok(t, b.Close())
 }
 
-// createBlock creates a block with nSeries series, filled with
-// samples of the given mint,maxt time range and returns its dir.
-func createBlock(tb testing.TB, dir string, nSeries int, mint, maxt int64) string {
-	head, err := NewHead(nil, nil, nil, 2*60*60*1000)
-	testutil.Ok(tb, err)
-	defer head.Close()
-
-	lbls, err := labels.ReadLabels(filepath.Join("testdata", "20kseries.json"), nSeries)
-	testutil.Ok(tb, err)
-	var ref uint64
-
-	for ts := mint; ts <= maxt; ts++ {
-		app := head.Appender()
-		for _, lbl := range lbls {
-			err := app.AddFast(ref, ts, rand.Float64())
-			if err == nil {
-				continue
-			}
-			ref, err = app.Add(lbl, int64(ts), rand.Float64())
-			testutil.Ok(tb, err)
-		}
-		err := app.Commit()
-		testutil.Ok(tb, err)
-	}
-
+// createBlock creates a block with given set of series and returns its dir.
+func createBlock(tb testing.TB, dir string, series []Series) string {
+	head := createHead(tb, series)
 	compactor, err := NewLeveledCompactor(nil, log.NewNopLogger(), []int64{1000000}, nil)
 	testutil.Ok(tb, err)
 
@@ -92,24 +70,92 @@ func createBlock(tb testing.TB, dir string, nSeries int, mint, maxt int64) strin
 
 	ulid, err := compactor.Write(dir, head, head.MinTime(), head.MaxTime(), nil)
 	testutil.Ok(tb, err)
-
 	return filepath.Join(dir, ulid.String())
 }
 
-func createHeadBlock(nLabels, nVals int) (*Head, error) {
-	series := tsdbutil.GenSeries(nLabels, nVals)
-	hb, err := NewHead(nil, nil, nil, 10*60*60*1000)
-	if err != nil {
-		return nil, err
-	}
-	app := hb.Appender()
-	for _, l := range series {
-		if _, err := app.Add(l, 1, 0); err != nil {
-			return nil, err
+func createHead(tb testing.TB, series []Series) *Head {
+	head, err := NewHead(nil, nil, nil, 2*60*60*1000)
+	testutil.Ok(tb, err)
+	defer head.Close()
+
+	app := head.Appender()
+	for _, s := range series {
+		ref := uint64(0)
+		it := s.Iterator()
+		for it.Next() {
+			t, v := it.At()
+			if ref != 0 {
+				err := app.AddFast(ref, t, v)
+				if err == nil {
+					continue
+				}
+			}
+			ref, err = app.Add(s.Labels(), t, v)
+			testutil.Ok(tb, err)
 		}
+		testutil.Ok(tb, it.Err())
 	}
-	if err := app.Commit(); err != nil {
-		return nil, err
+	err = app.Commit()
+	testutil.Ok(tb, err)
+	return head
+}
+
+const (
+	defaultLabelName  = "labelName"
+	defaultLabelValue = "labelValue"
+)
+
+// genSeries generates series with a given number of labels and values.
+func genSeries(totalSeries, labelCount int, mint, maxt int64, random bool) []Series {
+	if totalSeries == 0 || labelCount == 0 {
+		return nil
 	}
-	return hb, nil
+	series := make([]Series, totalSeries)
+
+	for i := 0; i < totalSeries; i++ {
+		lbls := make(map[string]string, labelCount)
+		for len(lbls) < labelCount {
+			if random {
+				lbls[randString()] = randString()
+				continue
+			}
+			lbls[defaultLabelName+strconv.Itoa(i)] = defaultLabelValue + strconv.Itoa(i)
+
+		}
+		samples := make([]tsdbutil.Sample, 0, maxt-mint+1)
+		for t := mint; t <= maxt; t++ {
+			samples = append(samples, sample{t: t, v: rand.Float64()})
+		}
+		series[i] = newSeries(lbls, samples)
+	}
+
+	return series
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
+)
+
+// randString generates random string.
+func randString() string {
+	maxLength := int32(50)
+	length := rand.Int31n(maxLength)
+	b := make([]byte, length+1)
+	// A rand.Int63() generates 63 random bits, enough for letterIdxMax characters!
+	for i, cache, remain := length, rand.Int63(), letterIdxMax; i >= 0; {
+		if remain == 0 {
+			cache, remain = rand.Int63(), letterIdxMax
+		}
+		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
+			b[i] = letterBytes[idx]
+			i--
+		}
+		cache >>= letterIdxBits
+		remain--
+	}
+
+	return string(b)
 }

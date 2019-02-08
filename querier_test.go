@@ -56,70 +56,6 @@ func newMockSeriesSet(list []Series) *mockSeriesSet {
 	}
 }
 
-type mockSeriesIterator struct {
-	seek func(int64) bool
-	at   func() (int64, float64)
-	next func() bool
-	err  func() error
-}
-
-func (m *mockSeriesIterator) Seek(t int64) bool    { return m.seek(t) }
-func (m *mockSeriesIterator) At() (int64, float64) { return m.at() }
-func (m *mockSeriesIterator) Next() bool           { return m.next() }
-func (m *mockSeriesIterator) Err() error           { return m.err() }
-
-type mockSeries struct {
-	labels   func() labels.Labels
-	iterator func() SeriesIterator
-}
-
-type Sample = tsdbutil.Sample
-
-func newSeries(l map[string]string, s []Sample) Series {
-	return &mockSeries{
-		labels:   func() labels.Labels { return labels.FromMap(l) },
-		iterator: func() SeriesIterator { return newListSeriesIterator(s) },
-	}
-}
-func (m *mockSeries) Labels() labels.Labels    { return m.labels() }
-func (m *mockSeries) Iterator() SeriesIterator { return m.iterator() }
-
-type listSeriesIterator struct {
-	list []Sample
-	idx  int
-}
-
-func newListSeriesIterator(list []Sample) *listSeriesIterator {
-	return &listSeriesIterator{list: list, idx: -1}
-}
-
-func (it *listSeriesIterator) At() (int64, float64) {
-	s := it.list[it.idx]
-	return s.T(), s.V()
-}
-
-func (it *listSeriesIterator) Next() bool {
-	it.idx++
-	return it.idx < len(it.list)
-}
-
-func (it *listSeriesIterator) Seek(t int64) bool {
-	if it.idx == -1 {
-		it.idx = 0
-	}
-	// Do binary search between current position and end.
-	it.idx = sort.Search(len(it.list)-it.idx, func(i int) bool {
-		s := it.list[i+it.idx]
-		return s.T() >= t
-	})
-
-	return it.idx < len(it.list)
-}
-
-func (it *listSeriesIterator) Err() error {
-	return nil
-}
-
 func TestMergedSeriesSet(t *testing.T) {
 
 	cases := []struct {
@@ -134,32 +70,32 @@ func TestMergedSeriesSet(t *testing.T) {
 			a: newMockSeriesSet([]Series{
 				newSeries(map[string]string{
 					"a": "a",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 1},
 				}),
 			}),
 			b: newMockSeriesSet([]Series{
 				newSeries(map[string]string{
 					"a": "a",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 2, v: 2},
 				}),
 				newSeries(map[string]string{
 					"b": "b",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 1},
 				}),
 			}),
 			exp: newMockSeriesSet([]Series{
 				newSeries(map[string]string{
 					"a": "a",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 1},
 					sample{t: 2, v: 2},
 				}),
 				newSeries(map[string]string{
 					"b": "b",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 1},
 				}),
 			}),
@@ -169,13 +105,13 @@ func TestMergedSeriesSet(t *testing.T) {
 				newSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "127.0.0.1:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 1},
 				}),
 				newSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "localhost:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 2},
 				}),
 			}),
@@ -183,13 +119,13 @@ func TestMergedSeriesSet(t *testing.T) {
 				newSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "127.0.0.1:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 2, v: 1},
 				}),
 				newSeries(map[string]string{
 					"handler":  "query",
 					"instance": "localhost:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 2, v: 2},
 				}),
 			}),
@@ -197,20 +133,20 @@ func TestMergedSeriesSet(t *testing.T) {
 				newSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "127.0.0.1:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 1},
 					sample{t: 2, v: 1},
 				}),
 				newSeries(map[string]string{
 					"handler":  "prometheus",
 					"instance": "localhost:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 1, v: 2},
 				}),
 				newSeries(map[string]string{
 					"handler":  "query",
 					"instance": "localhost:9090",
-				}, []Sample{
+				}, []tsdbutil.Sample{
 					sample{t: 2, v: 2},
 				}),
 			}),
@@ -316,7 +252,7 @@ func createIdxChkReaders(tc []seriesSamples) (IndexReader, ChunkReader) {
 }
 
 func TestBlockQuerier(t *testing.T) {
-	newSeries := func(l map[string]string, s []Sample) Series {
+	newSeries := func(l map[string]string, s []tsdbutil.Sample) Series {
 		return &mockSeries{
 			labels:   func() labels.Labels { return labels.FromMap(l) },
 			iterator: func() SeriesIterator { return newListSeriesIterator(s) },
@@ -404,13 +340,13 @@ func TestBlockQuerier(t *testing.T) {
 					newSeries(map[string]string{
 						"a": "a",
 					},
-						[]Sample{sample{2, 3}, sample{3, 4}, sample{5, 2}, sample{6, 3}},
+						[]tsdbutil.Sample{sample{2, 3}, sample{3, 4}, sample{5, 2}, sample{6, 3}},
 					),
 					newSeries(map[string]string{
 						"a": "a",
 						"b": "b",
 					},
-						[]Sample{sample{2, 2}, sample{3, 3}, sample{5, 3}, sample{6, 6}},
+						[]tsdbutil.Sample{sample{2, 2}, sample{3, 3}, sample{5, 3}, sample{6, 6}},
 					),
 				}),
 			},
@@ -451,12 +387,10 @@ Outer:
 			testutil.Equals(t, smplExp, smplRes)
 		}
 	}
-
-	return
 }
 
 func TestBlockQuerierDelete(t *testing.T) {
-	newSeries := func(l map[string]string, s []Sample) Series {
+	newSeries := func(l map[string]string, s []tsdbutil.Sample) Series {
 		return &mockSeries{
 			labels:   func() labels.Labels { return labels.FromMap(l) },
 			iterator: func() SeriesIterator { return newListSeriesIterator(s) },
@@ -531,13 +465,13 @@ func TestBlockQuerierDelete(t *testing.T) {
 					newSeries(map[string]string{
 						"a": "a",
 					},
-						[]Sample{sample{5, 2}, sample{6, 3}, sample{7, 4}},
+						[]tsdbutil.Sample{sample{5, 2}, sample{6, 3}, sample{7, 4}},
 					),
 					newSeries(map[string]string{
 						"a": "a",
 						"b": "b",
 					},
-						[]Sample{sample{4, 15}, sample{5, 3}},
+						[]tsdbutil.Sample{sample{4, 15}, sample{5, 3}},
 					),
 				}),
 			},
@@ -550,12 +484,12 @@ func TestBlockQuerierDelete(t *testing.T) {
 						"a": "a",
 						"b": "b",
 					},
-						[]Sample{sample{4, 15}, sample{5, 3}},
+						[]tsdbutil.Sample{sample{4, 15}, sample{5, 3}},
 					),
 					newSeries(map[string]string{
 						"b": "b",
 					},
-						[]Sample{sample{2, 2}, sample{3, 6}, sample{5, 1}},
+						[]tsdbutil.Sample{sample{2, 2}, sample{3, 6}, sample{5, 1}},
 					),
 				}),
 			},
@@ -568,7 +502,7 @@ func TestBlockQuerierDelete(t *testing.T) {
 						"a": "a",
 						"b": "b",
 					},
-						[]Sample{sample{4, 15}},
+						[]tsdbutil.Sample{sample{4, 15}},
 					),
 				}),
 			},
@@ -615,8 +549,6 @@ Outer:
 			testutil.Equals(t, smplExp, smplRes)
 		}
 	}
-
-	return
 }
 
 func TestBaseChunkSeries(t *testing.T) {
@@ -713,8 +645,6 @@ func TestBaseChunkSeries(t *testing.T) {
 		testutil.Equals(t, len(tc.expIdxs), i)
 		testutil.Ok(t, bcs.Err())
 	}
-
-	return
 }
 
 // TODO: Remove after simpleSeries is merged
@@ -727,66 +657,66 @@ func (s itSeries) Labels() labels.Labels    { return labels.Labels{} }
 
 func TestSeriesIterator(t *testing.T) {
 	itcases := []struct {
-		a, b, c []Sample
-		exp     []Sample
+		a, b, c []tsdbutil.Sample
+		exp     []tsdbutil.Sample
 
 		mint, maxt int64
 	}{
 		{
-			a: []Sample{},
-			b: []Sample{},
-			c: []Sample{},
+			a: []tsdbutil.Sample{},
+			b: []tsdbutil.Sample{},
+			c: []tsdbutil.Sample{},
 
-			exp: []Sample{},
+			exp: []tsdbutil.Sample{},
 
 			mint: math.MinInt64,
 			maxt: math.MaxInt64,
 		},
 		{
-			a: []Sample{
+			a: []tsdbutil.Sample{
 				sample{1, 2},
 				sample{2, 3},
 				sample{3, 5},
 				sample{6, 1},
 			},
-			b: []Sample{},
-			c: []Sample{
+			b: []tsdbutil.Sample{},
+			c: []tsdbutil.Sample{
 				sample{7, 89}, sample{9, 8},
 			},
 
-			exp: []Sample{
+			exp: []tsdbutil.Sample{
 				sample{1, 2}, sample{2, 3}, sample{3, 5}, sample{6, 1}, sample{7, 89}, sample{9, 8},
 			},
 			mint: math.MinInt64,
 			maxt: math.MaxInt64,
 		},
 		{
-			a: []Sample{},
-			b: []Sample{
+			a: []tsdbutil.Sample{},
+			b: []tsdbutil.Sample{
 				sample{1, 2}, sample{2, 3}, sample{3, 5}, sample{6, 1},
 			},
-			c: []Sample{
+			c: []tsdbutil.Sample{
 				sample{7, 89}, sample{9, 8},
 			},
 
-			exp: []Sample{
+			exp: []tsdbutil.Sample{
 				sample{1, 2}, sample{2, 3}, sample{3, 5}, sample{6, 1}, sample{7, 89}, sample{9, 8},
 			},
 			mint: 2,
 			maxt: 8,
 		},
 		{
-			a: []Sample{
+			a: []tsdbutil.Sample{
 				sample{1, 2}, sample{2, 3}, sample{3, 5}, sample{6, 1},
 			},
-			b: []Sample{
+			b: []tsdbutil.Sample{
 				sample{7, 89}, sample{9, 8},
 			},
-			c: []Sample{
+			c: []tsdbutil.Sample{
 				sample{10, 22}, sample{203, 3493},
 			},
 
-			exp: []Sample{
+			exp: []tsdbutil.Sample{
 				sample{1, 2}, sample{2, 3}, sample{3, 5}, sample{6, 1}, sample{7, 89}, sample{9, 8}, sample{10, 22}, sample{203, 3493},
 			},
 			mint: 6,
@@ -795,29 +725,29 @@ func TestSeriesIterator(t *testing.T) {
 	}
 
 	seekcases := []struct {
-		a, b, c []Sample
+		a, b, c []tsdbutil.Sample
 
 		seek    int64
 		success bool
-		exp     []Sample
+		exp     []tsdbutil.Sample
 
 		mint, maxt int64
 	}{
 		{
-			a: []Sample{},
-			b: []Sample{},
-			c: []Sample{},
+			a: []tsdbutil.Sample{},
+			b: []tsdbutil.Sample{},
+			c: []tsdbutil.Sample{},
 
 			seek:    0,
 			success: false,
 			exp:     nil,
 		},
 		{
-			a: []Sample{
+			a: []tsdbutil.Sample{
 				sample{2, 3},
 			},
-			b: []Sample{},
-			c: []Sample{
+			b: []tsdbutil.Sample{},
+			c: []tsdbutil.Sample{
 				sample{7, 89}, sample{9, 8},
 			},
 
@@ -828,55 +758,55 @@ func TestSeriesIterator(t *testing.T) {
 			maxt:    math.MaxInt64,
 		},
 		{
-			a: []Sample{},
-			b: []Sample{
+			a: []tsdbutil.Sample{},
+			b: []tsdbutil.Sample{
 				sample{1, 2}, sample{3, 5}, sample{6, 1},
 			},
-			c: []Sample{
+			c: []tsdbutil.Sample{
 				sample{7, 89}, sample{9, 8},
 			},
 
 			seek:    2,
 			success: true,
-			exp: []Sample{
+			exp: []tsdbutil.Sample{
 				sample{3, 5}, sample{6, 1}, sample{7, 89}, sample{9, 8},
 			},
 			mint: 5,
 			maxt: 8,
 		},
 		{
-			a: []Sample{
+			a: []tsdbutil.Sample{
 				sample{6, 1},
 			},
-			b: []Sample{
+			b: []tsdbutil.Sample{
 				sample{9, 8},
 			},
-			c: []Sample{
+			c: []tsdbutil.Sample{
 				sample{10, 22}, sample{203, 3493},
 			},
 
 			seek:    10,
 			success: true,
-			exp: []Sample{
+			exp: []tsdbutil.Sample{
 				sample{10, 22}, sample{203, 3493},
 			},
 			mint: 10,
 			maxt: 203,
 		},
 		{
-			a: []Sample{
+			a: []tsdbutil.Sample{
 				sample{6, 1},
 			},
-			b: []Sample{
+			b: []tsdbutil.Sample{
 				sample{9, 8},
 			},
-			c: []Sample{
+			c: []tsdbutil.Sample{
 				sample{10, 22}, sample{203, 3493},
 			},
 
 			seek:    203,
 			success: true,
-			exp: []Sample{
+			exp: []tsdbutil.Sample{
 				sample{203, 3493},
 			},
 			mint: 7,
@@ -893,10 +823,10 @@ func TestSeriesIterator(t *testing.T) {
 			}
 			res := newChunkSeriesIterator(chkMetas, nil, tc.mint, tc.maxt)
 
-			smplValid := make([]Sample, 0)
+			smplValid := make([]tsdbutil.Sample, 0)
 			for _, s := range tc.exp {
 				if s.T() >= tc.mint && s.T() <= tc.maxt {
-					smplValid = append(smplValid, Sample(s))
+					smplValid = append(smplValid, tsdbutil.Sample(s))
 				}
 			}
 			exp := newListSeriesIterator(smplValid)
@@ -910,22 +840,22 @@ func TestSeriesIterator(t *testing.T) {
 
 		t.Run("Seek", func(t *testing.T) {
 			extra := []struct {
-				a, b, c []Sample
+				a, b, c []tsdbutil.Sample
 
 				seek    int64
 				success bool
-				exp     []Sample
+				exp     []tsdbutil.Sample
 
 				mint, maxt int64
 			}{
 				{
-					a: []Sample{
+					a: []tsdbutil.Sample{
 						sample{6, 1},
 					},
-					b: []Sample{
+					b: []tsdbutil.Sample{
 						sample{9, 8},
 					},
-					c: []Sample{
+					c: []tsdbutil.Sample{
 						sample{10, 22}, sample{203, 3493},
 					},
 
@@ -936,19 +866,19 @@ func TestSeriesIterator(t *testing.T) {
 					maxt:    202,
 				},
 				{
-					a: []Sample{
+					a: []tsdbutil.Sample{
 						sample{6, 1},
 					},
-					b: []Sample{
+					b: []tsdbutil.Sample{
 						sample{9, 8},
 					},
-					c: []Sample{
+					c: []tsdbutil.Sample{
 						sample{10, 22}, sample{203, 3493},
 					},
 
 					seek:    5,
 					success: true,
-					exp:     []Sample{sample{10, 22}},
+					exp:     []tsdbutil.Sample{sample{10, 22}},
 					mint:    10,
 					maxt:    202,
 				},
@@ -964,10 +894,10 @@ func TestSeriesIterator(t *testing.T) {
 				}
 				res := newChunkSeriesIterator(chkMetas, nil, tc.mint, tc.maxt)
 
-				smplValid := make([]Sample, 0)
+				smplValid := make([]tsdbutil.Sample, 0)
 				for _, s := range tc.exp {
 					if s.T() >= tc.mint && s.T() <= tc.maxt {
-						smplValid = append(smplValid, Sample(s))
+						smplValid = append(smplValid, tsdbutil.Sample(s))
 					}
 				}
 				exp := newListSeriesIterator(smplValid)
@@ -1000,7 +930,7 @@ func TestSeriesIterator(t *testing.T) {
 				itSeries{newListSeriesIterator(tc.c)}
 
 			res := newChainedSeriesIterator(a, b, c)
-			exp := newListSeriesIterator([]Sample(tc.exp))
+			exp := newListSeriesIterator([]tsdbutil.Sample(tc.exp))
 
 			smplExp, errExp := expandSeriesIterator(exp)
 			smplRes, errRes := expandSeriesIterator(res)
@@ -1038,16 +968,14 @@ func TestSeriesIterator(t *testing.T) {
 			}
 		})
 	})
-
-	return
 }
 
 // Regression for: https://github.com/prometheus/tsdb/pull/97
 func TestChunkSeriesIterator_DoubleSeek(t *testing.T) {
 	chkMetas := []chunks.Meta{
-		tsdbutil.ChunkFromSamples([]Sample{}),
-		tsdbutil.ChunkFromSamples([]Sample{sample{1, 1}, sample{2, 2}, sample{3, 3}}),
-		tsdbutil.ChunkFromSamples([]Sample{sample{4, 4}, sample{5, 5}}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{sample{1, 1}, sample{2, 2}, sample{3, 3}}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{sample{4, 4}, sample{5, 5}}),
 	}
 
 	res := newChunkSeriesIterator(chkMetas, nil, 2, 8)
@@ -1062,9 +990,9 @@ func TestChunkSeriesIterator_DoubleSeek(t *testing.T) {
 // skipped to the end when seeking a value in the current chunk.
 func TestChunkSeriesIterator_SeekInCurrentChunk(t *testing.T) {
 	metas := []chunks.Meta{
-		tsdbutil.ChunkFromSamples([]Sample{}),
-		tsdbutil.ChunkFromSamples([]Sample{sample{1, 2}, sample{3, 4}, sample{5, 6}, sample{7, 8}}),
-		tsdbutil.ChunkFromSamples([]Sample{}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{sample{1, 2}, sample{3, 4}, sample{5, 6}, sample{7, 8}}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{}),
 	}
 
 	it := newChunkSeriesIterator(metas, nil, 1, 7)
@@ -1084,7 +1012,7 @@ func TestChunkSeriesIterator_SeekInCurrentChunk(t *testing.T) {
 // Seek gets called and advances beyond the max time, which was just accepted as a valid sample.
 func TestChunkSeriesIterator_NextWithMinTime(t *testing.T) {
 	metas := []chunks.Meta{
-		tsdbutil.ChunkFromSamples([]Sample{sample{1, 6}, sample{5, 6}, sample{7, 8}}),
+		tsdbutil.ChunkFromSamples([]tsdbutil.Sample{sample{1, 6}, sample{5, 6}, sample{7, 8}}),
 	}
 
 	it := newChunkSeriesIterator(metas, nil, 2, 4)
@@ -1140,7 +1068,6 @@ func TestPopulatedCSReturnsValidChunkSlice(t *testing.T) {
 		maxt: 15,
 	}
 	testutil.Assert(t, p.Next() == false, "")
-	return
 }
 
 type mockChunkSeriesSet struct {
@@ -1227,12 +1154,12 @@ func BenchmarkMergedSeriesSet(b *testing.B) {
 
 func BenchmarkPersistedQueries(b *testing.B) {
 	for _, nSeries := range []int{10, 100} {
-		for _, nSamples := range []int{1000, 10000, 100000} {
+		for _, nSamples := range []int64{1000, 10000, 100000} {
 			b.Run(fmt.Sprintf("series=%d,samplesPerSeries=%d", nSeries, nSamples), func(b *testing.B) {
 				dir, err := ioutil.TempDir("", "bench_persisted")
 				testutil.Ok(b, err)
 				defer os.RemoveAll(dir)
-				block, err := OpenBlock(createBlock(b, dir, nSeries, 1, int64(nSamples)), nil)
+				block, err := OpenBlock(nil, createBlock(b, dir, genSeries(nSeries, 10, 1, int64(nSamples), true)), nil)
 				testutil.Ok(b, err)
 				defer block.Close()
 
@@ -1463,13 +1390,14 @@ func (m mockIndex) LabelNames() ([]string, error) {
 	return labelNames, nil
 }
 
-func benchPersistedQuery(b *testing.B, nLabels, nVals int, selector labels.Selector, expand bool) {
+func benchPersistedQuery(b *testing.B, series []Series, selector labels.Selector, expand bool) {
 	dir, err := ioutil.TempDir("", "test_persisted_query")
 	if err != nil {
 		b.Fatalf("Opening test dir failed: %s", err)
 	}
 	defer os.RemoveAll(dir)
-	block := createPopulatedBlock(b, dir, nLabels, nVals, 0, 10)
+	block, err := OpenBlock(nil, createBlock(b, dir, series), nil)
+	testutil.Ok(b, err)
 
 	q, err := NewBlockQuerier(block, 0, 10)
 	testutil.Ok(b, err)
@@ -1477,10 +1405,9 @@ func benchPersistedQuery(b *testing.B, nLabels, nVals int, selector labels.Selec
 	testutil.Ok(b, q.Close())
 }
 
-func benchInMemQuery(b *testing.B, nLabels, nVals int, selector labels.Selector, expand bool) {
-	hb, err := createHeadBlock(nLabels, nVals)
-	testutil.Ok(b, err)
-	q, err := NewBlockQuerier(hb, 0, 10)
+func benchInMemQuery(b *testing.B, series []Series, selector labels.Selector, expand bool) {
+	head := createHead(b, series)
+	q, err := NewBlockQuerier(head, 0, 10)
 	testutil.Ok(b, err)
 	benchQuery(b, q, selector, expand)
 	testutil.Ok(b, q.Close())
@@ -1504,67 +1431,67 @@ func benchQuery(b *testing.B, q Querier, selector labels.Selector, expand bool) 
 }
 
 func BenchmarkInMemQueries_Series_1M_EQSelector_1_Expansion(b *testing.B) {
-	benchInMemQuery(b, 6, 10, labels.Selector{labels.NewEqualMatcher("label-1", "value-5")}, true)
+	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5")}, true)
 }
 func BenchmarkInMemQueries_Series_1M_EQSelector_2_Expansion(b *testing.B) {
-	benchInMemQuery(b, 6, 10, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
+	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkInMemQueries_Series_1M_EQSelector_3_Expansion(b *testing.B) {
-	benchInMemQuery(b, 6, 10, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
-		labels.NewEqualMatcher("label-3", "value-4"),
+	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
+		labels.NewEqualMatcher(defaultLabelName+"3", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_EQSelector_1_Expansion(b *testing.B) {
-	benchPersistedQuery(b, 6, 10, labels.Selector{labels.NewEqualMatcher("label-1", "value-5")}, true)
+	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5")}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_EQSelector_2_Expansion(b *testing.B) {
-	benchPersistedQuery(b, 6, 10, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
+	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_EQSelector_3_Expansion(b *testing.B) {
-	benchPersistedQuery(b, 6, 10, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
-		labels.NewEqualMatcher("label-3", "value-4"),
+	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
+		labels.NewEqualMatcher(defaultLabelName+"3", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkInMemQueries_Series_1M_RESelector_1_Expansion(b *testing.B) {
-	benchInMemQuery(b, 3, 100, labels.Selector{labels.NewMustRegexpMatcher("label-2", "value-.*0")}, true)
+	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+".*0")}, true)
 }
 func BenchmarkInMemQueries_Series_1M_RESelector_2_Expansion(b *testing.B) {
-	benchInMemQuery(b, 3, 100, labels.Selector{
-		labels.NewMustRegexpMatcher("label-1", "value-.*0"),
-		labels.NewMustRegexpMatcher("label-2", "value-4.*"),
+	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*0"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+"4.*"),
 	}, true)
 }
 func BenchmarkInMemQueries_Series_1M_RESelector_3_Expansion(b *testing.B) {
-	benchInMemQuery(b, 3, 100, labels.Selector{
-		labels.NewMustRegexpMatcher("label-0", "value-5.*"),
-		labels.NewMustRegexpMatcher("label-1", "value-.*4"),
-		labels.NewMustRegexpMatcher("label-2", "value-.*4"),
+	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
+		labels.NewMustRegexpMatcher(defaultLabelName+"0", defaultLabelValue+"5.*"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*4"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+".*4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_RESelector_1_Expansion(b *testing.B) {
-	benchPersistedQuery(b, 3, 100, labels.Selector{labels.NewMustRegexpMatcher("label-2", "value-.*0")}, true)
+	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+".*0")}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_RESelector_2_Expansion(b *testing.B) {
-	benchPersistedQuery(b, 3, 100, labels.Selector{
-		labels.NewMustRegexpMatcher("label-1", "value-.*0"),
-		labels.NewMustRegexpMatcher("label-2", "value-4.*"),
+	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*0"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+"4.*"),
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_RESelector_3_Expansion(b *testing.B) {
-	benchPersistedQuery(b, 3, 100, labels.Selector{
-		labels.NewMustRegexpMatcher("label-0", "value-5.*"),
-		labels.NewMustRegexpMatcher("label-1", "value-.*4"),
-		labels.NewMustRegexpMatcher("label-2", "value-.*4"),
+	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
+		labels.NewMustRegexpMatcher(defaultLabelName+"0", defaultLabelValue+"5.*"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*4"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+".*4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_3Blocks_Series_1M_EQSelector_1_Expansion(b *testing.B) {
@@ -1573,13 +1500,14 @@ func BenchmarkPersistedQueries_3Blocks_Series_1M_EQSelector_1_Expansion(b *testi
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 6, 10, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(60, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
-	benchQuery(b, q, labels.Selector{labels.NewEqualMatcher("label-1", "value-5")}, true)
+	benchQuery(b, q, labels.Selector{labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5")}, true)
 }
 func BenchmarkPersistedQueries_3Blocks_Series_1M_EQSelector_2_Expansion(b *testing.B) {
 	qs := []Querier{}
@@ -1587,15 +1515,16 @@ func BenchmarkPersistedQueries_3Blocks_Series_1M_EQSelector_2_Expansion(b *testi
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 6, 10, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(60, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_3Blocks_Series_1M_EQSelector_3_Expansion(b *testing.B) {
@@ -1604,16 +1533,17 @@ func BenchmarkPersistedQueries_3Blocks_Series_1M_EQSelector_3_Expansion(b *testi
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 6, 10, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(60, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
-		labels.NewEqualMatcher("label-3", "value-4"),
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
+		labels.NewEqualMatcher(defaultLabelName+"3", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_3Blocks_Series_1M_RESelector_1_Expansion(b *testing.B) {
@@ -1622,13 +1552,14 @@ func BenchmarkPersistedQueries_3Blocks_Series_1M_RESelector_1_Expansion(b *testi
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 3, 100, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(300, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
-	benchQuery(b, q, labels.Selector{labels.NewMustRegexpMatcher("label-2", "value-.*0")}, true)
+	benchQuery(b, q, labels.Selector{labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+".*0")}, true)
 }
 func BenchmarkPersistedQueries_3Blocks_Series_1M_RESelector_2_Expansion(b *testing.B) {
 	qs := []Querier{}
@@ -1636,15 +1567,16 @@ func BenchmarkPersistedQueries_3Blocks_Series_1M_RESelector_2_Expansion(b *testi
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 3, 100, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(300, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewMustRegexpMatcher("label-1", "value-.*0"),
-		labels.NewMustRegexpMatcher("label-2", "value-4.*"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*0"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+"4.*"),
 	}, true)
 }
 func BenchmarkPersistedQueries_3Blocks_Series_1M_RESelector_3_Expansion(b *testing.B) {
@@ -1653,16 +1585,17 @@ func BenchmarkPersistedQueries_3Blocks_Series_1M_RESelector_3_Expansion(b *testi
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 3, 100, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(300, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewMustRegexpMatcher("label-0", "value-5.*"),
-		labels.NewMustRegexpMatcher("label-1", "value-.*4"),
-		labels.NewMustRegexpMatcher("label-2", "value-.*4"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"0", defaultLabelValue+"5.*"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*4"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+".*4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_10Blocks_Series_1M_EQSelector_1_Expansion(b *testing.B) {
@@ -1671,13 +1604,14 @@ func BenchmarkPersistedQueries_10Blocks_Series_1M_EQSelector_1_Expansion(b *test
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 6, 10, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(60, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
-	benchQuery(b, q, labels.Selector{labels.NewEqualMatcher("label-1", "value-5")}, true)
+	benchQuery(b, q, labels.Selector{labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5")}, true)
 }
 func BenchmarkPersistedQueries_10Blocks_Series_1M_EQSelector_2_Expansion(b *testing.B) {
 	qs := []Querier{}
@@ -1685,15 +1619,16 @@ func BenchmarkPersistedQueries_10Blocks_Series_1M_EQSelector_2_Expansion(b *test
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 6, 10, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(60, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_10Blocks_Series_1M_EQSelector_3_Expansion(b *testing.B) {
@@ -1702,16 +1637,17 @@ func BenchmarkPersistedQueries_10Blocks_Series_1M_EQSelector_3_Expansion(b *test
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 6, 10, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(60, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewEqualMatcher("label-1", "value-5"),
-		labels.NewEqualMatcher("label-2", "value-4"),
-		labels.NewEqualMatcher("label-3", "value-4"),
+		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
+		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
+		labels.NewEqualMatcher(defaultLabelName+"3", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_10Blocks_Series_1M_RESelector_1_Expansion(b *testing.B) {
@@ -1720,13 +1656,14 @@ func BenchmarkPersistedQueries_10Blocks_Series_1M_RESelector_1_Expansion(b *test
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 3, 100, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(300, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
-	benchQuery(b, q, labels.Selector{labels.NewMustRegexpMatcher("label-2", "value-.*0")}, true)
+	benchQuery(b, q, labels.Selector{labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+".*0")}, true)
 }
 func BenchmarkPersistedQueries_10Blocks_Series_1M_RESelector_2_Expansion(b *testing.B) {
 	qs := []Querier{}
@@ -1734,15 +1671,16 @@ func BenchmarkPersistedQueries_10Blocks_Series_1M_RESelector_2_Expansion(b *test
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 3, 100, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(300, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewMustRegexpMatcher("label-1", "value-.*0"),
-		labels.NewMustRegexpMatcher("label-2", "value-4.*"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*0"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+"4.*"),
 	}, true)
 }
 func BenchmarkPersistedQueries_10Blocks_Series_1M_RESelector_3_Expansion(b *testing.B) {
@@ -1751,15 +1689,66 @@ func BenchmarkPersistedQueries_10Blocks_Series_1M_RESelector_3_Expansion(b *test
 		dir, err := ioutil.TempDir("", "bench_persisted")
 		testutil.Ok(b, err)
 		defer os.RemoveAll(dir)
-		block := createPopulatedBlock(b, dir, 3, 100, 0, 20)
+		block, err := OpenBlock(nil, createBlock(b, dir, genSeries(300, 2, 0, 20, true)), nil)
+		testutil.Ok(b, err)
 		q, err := NewBlockQuerier(block, 0, 20)
 		testutil.Ok(b, err)
 		qs = append(qs, q)
 	}
 	q := &querier{blocks: qs}
 	benchQuery(b, q, labels.Selector{
-		labels.NewMustRegexpMatcher("label-0", "value-5.*"),
-		labels.NewMustRegexpMatcher("label-1", "value-.*4"),
-		labels.NewMustRegexpMatcher("label-2", "value-.*4"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"0", defaultLabelValue+"5.*"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*4"),
+		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+".*4"),
 	}, true)
+}
+
+type mockSeries struct {
+	labels   func() labels.Labels
+	iterator func() SeriesIterator
+}
+
+func newSeries(l map[string]string, s []tsdbutil.Sample) Series {
+	return &mockSeries{
+		labels:   func() labels.Labels { return labels.FromMap(l) },
+		iterator: func() SeriesIterator { return newListSeriesIterator(s) },
+	}
+}
+func (m *mockSeries) Labels() labels.Labels    { return m.labels() }
+func (m *mockSeries) Iterator() SeriesIterator { return m.iterator() }
+
+type listSeriesIterator struct {
+	list []tsdbutil.Sample
+	idx  int
+}
+
+func newListSeriesIterator(list []tsdbutil.Sample) *listSeriesIterator {
+	return &listSeriesIterator{list: list, idx: -1}
+}
+
+func (it *listSeriesIterator) At() (int64, float64) {
+	s := it.list[it.idx]
+	return s.T(), s.V()
+}
+
+func (it *listSeriesIterator) Next() bool {
+	it.idx++
+	return it.idx < len(it.list)
+}
+
+func (it *listSeriesIterator) Seek(t int64) bool {
+	if it.idx == -1 {
+		it.idx = 0
+	}
+	// Do binary search between current position and end.
+	it.idx = sort.Search(len(it.list)-it.idx, func(i int) bool {
+		s := it.list[i+it.idx]
+		return s.T() >= t
+	})
+
+	return it.idx < len(it.list)
+}
+
+func (it *listSeriesIterator) Err() error {
+	return nil
 }
