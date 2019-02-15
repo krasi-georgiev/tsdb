@@ -777,7 +777,7 @@ func BenchmarkCompaction(b *testing.B) {
 			blockDirs := make([]string, 0, len(c.ranges))
 			var blocks []*Block
 			for _, r := range c.ranges {
-				block, err := OpenBlock(nil, createBlock(b, dir, genSeries(nSeries, 10, r[0], r[1])), nil)
+				block, err := OpenBlock(nil, createBlock(b, dir, genSeries(nSeries, 10, r[0], r[1], false)), nil)
 				testutil.Ok(b, err)
 				blocks = append(blocks, block)
 				defer func() {
@@ -863,9 +863,9 @@ func TestCancelCompactions(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 
 	// Create some blocks to fall within the compaction range.
-	createBlock(t, tmpdir, genSeries(10, 10000, 0, 1000))
-	createBlock(t, tmpdir, genSeries(10, 10000, 1000, 2000))
-	createBlock(t, tmpdir, genSeries(1, 1, 2000, 2001)) // The most recent block is ignored so can be e small one.
+	createBlock(t, tmpdir, genSeries(10, 10000, 0, 1000, false))
+	createBlock(t, tmpdir, genSeries(10, 10000, 1000, 2000, false))
+	createBlock(t, tmpdir, genSeries(1, 1, 2000, 2001, false)) // The most recent block is ignored so can be e small one.
 
 	// Copy the db so we have an exact copy to compare compaction times.
 	tmpdirCopy := tmpdir + "Copy"
@@ -947,7 +947,7 @@ func TestDeleteCompactionBlockAfterFailedReload(t *testing.T) {
 				{MinTime: 150, MaxTime: 200},
 			}
 			for _, m := range blocks {
-				createBlock(t, db.Dir(), genSeries(1, 1, m.MinTime, m.MaxTime))
+				createBlock(t, db.Dir(), genSeries(1, 1, m.MinTime, m.MaxTime, false))
 			}
 			testutil.Ok(t, db.reload())
 			testutil.Equals(t, len(blocks), len(db.Blocks()), "unexpected block count after a reload")
@@ -970,7 +970,7 @@ func TestDeleteCompactionBlockAfterFailedReload(t *testing.T) {
 			expBlocks := bootStrap(db)
 
 			// Create a block that will trigger the reload to fail.
-			blockPath := createBlock(t, db.Dir(), genSeries(1, 1, 200, 300))
+			blockPath := createBlock(t, db.Dir(), genSeries(1, 1, 200, 300, false))
 			lastBlockIndex := path.Join(blockPath, indexFilename)
 			actBlocks, err := blockDirs(db.Dir())
 			testutil.Ok(t, err)
