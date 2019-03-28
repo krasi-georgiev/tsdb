@@ -113,14 +113,15 @@ func genSeries(totalSeries, labelCount int, mint, maxt int64, random bool) []Ser
 	}
 
 	series := make([]Series, totalSeries)
+
 	for i := 0; i < totalSeries; i++ {
 		lbls := make(map[string]string, labelCount)
-		for len(lbls) < labelCount {
+		for j := 0; len(lbls) < labelCount; j++ {
 			if random {
 				lbls[randString()] = randString()
 				continue
 			}
-			lbls[defaultLabelName+strconv.Itoa(i)] = defaultLabelValue + strconv.Itoa(i)
+			lbls[defaultLabelName+strconv.Itoa(j)] = defaultLabelValue + strconv.Itoa(j)
 
 		}
 		samples := make([]tsdbutil.Sample, 0, maxt-mint+1)
