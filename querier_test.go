@@ -1521,16 +1521,16 @@ func BenchmarkInMemQueries_Series_1M_EQSelector_3_Expansion(b *testing.B) {
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_EQSelector_1_Expansion(b *testing.B) {
-	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5")}, true)
+	benchPersistedQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5")}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_EQSelector_2_Expansion(b *testing.B) {
-	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
+	benchPersistedQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
 		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
 		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_EQSelector_3_Expansion(b *testing.B) {
-	benchInMemQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
+	benchPersistedQuery(b, genSeries(60, 2, 0, 10, false), labels.Selector{
 		labels.NewEqualMatcher(defaultLabelName+"1", defaultLabelValue+"5"),
 		labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+"4"),
 		labels.NewEqualMatcher(defaultLabelName+"3", defaultLabelValue+"4"),
@@ -1553,16 +1553,16 @@ func BenchmarkInMemQueries_Series_1M_RESelector_3_Expansion(b *testing.B) {
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_RESelector_1_Expansion(b *testing.B) {
-	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+".*0")}, true)
+	benchPersistedQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{labels.NewEqualMatcher(defaultLabelName+"2", defaultLabelValue+".*0")}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_RESelector_2_Expansion(b *testing.B) {
-	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
+	benchPersistedQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
 		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*0"),
 		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+"4.*"),
 	}, true)
 }
 func BenchmarkPersistedQueries_Series_1M_RESelector_3_Expansion(b *testing.B) {
-	benchInMemQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
+	benchPersistedQuery(b, genSeries(300, 2, 0, 10, false), labels.Selector{
 		labels.NewMustRegexpMatcher(defaultLabelName+"0", defaultLabelValue+"5.*"),
 		labels.NewMustRegexpMatcher(defaultLabelName+"1", defaultLabelValue+".*4"),
 		labels.NewMustRegexpMatcher(defaultLabelName+"2", defaultLabelValue+".*4"),
